@@ -1,6 +1,8 @@
 
 #include "Nsf_Emu.h"
 
+#include <string.h>
+
 #if !NSF_EMU_APU_ONLY
 	#include "Nes_Namco_Apu.h"
 	#include "Nes_Fds_Apu.h"
@@ -79,14 +81,42 @@ void Nsf_Emu::cpu_write( nes_addr_t addr, int data )
 		return;
 	}
 
-	unsigned bank = addr - bank_select_addr;
-	if ( bank < bank_count )
+	if ( fds_ram )
 	{
-		int32_t offset = rom.mask_addr( data * (int32_t) bank_size );
-		if ( offset >= rom.size() )
-			set_warning( "Invalid bank" );
-		cpu::map_code( (bank + 8) * bank_size, bank_size, rom.at_addr( offset ) );
-		return;
+		unsigned ram_offset = addr - fdsram_addr;
+		if ( ram_offset < fdsram_size )
+		{
+			fdsram [ram_offset] = data;
+			return;
+		}
+
+		// writing a bank number copies that ROM page into RAM; banks 8-9 (0xE000-0xFFFF) remain ROM-mapped.
+		unsigned fbank = addr - fds_bank_select_addr;
+		if ( fbank < fds_bank_count )
+		{
+			int32_t offset = rom.mask_addr( data * (int32_t) bank_size );
+			if ( offset >= rom.size() )
+				set_warning( "Invalid bank" );
+			if ( fbank < 2 )
+				memcpy( sram + fbank * bank_size, rom.at_addr( offset ), bank_size );
+			else if ( fbank < fds_bank_count - 2 )
+				memcpy( fdsram + (fbank - 2) * bank_size, rom.at_addr( offset ), bank_size );
+			else
+				cpu::map_code( (fbank + 6) * bank_size, bank_size, rom.at_addr( offset ) );
+			return;
+		}
+	}
+	else
+	{
+		unsigned bank = addr - bank_select_addr;
+		if ( bank < bank_count )
+		{
+			int32_t offset = rom.mask_addr( data * (int32_t) bank_size );
+			if ( offset >= rom.size() )
+				set_warning( "Invalid bank" );
+			cpu::map_code( (bank + 8) * bank_size, bank_size, rom.at_addr( offset ) );
+			return;
+		}
 	}
 
 	cpu_write_misc( addr, data );

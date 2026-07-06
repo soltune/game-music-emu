@@ -60,6 +60,8 @@ Nsf_Emu::Nsf_Emu()
 	mmc5  = 0;
 	vrc7  = 0;
 
+	fds_ram = false;
+
 	set_type( gme_nsf_type );
 	set_silence_lookahead( 6 );
 	apu.dmc_reader( pcm_read, this );
@@ -351,7 +353,9 @@ blargg_err_t Nsf_Emu::load_( Data_Reader& in )
 	if ( !load_addr ) load_addr = rom_begin;
 	if ( !init_addr ) init_addr = rom_begin;
 	if ( !play_addr ) play_addr = rom_begin;
-	if ( load_addr < rom_begin || init_addr < rom_begin )
+	fds_ram = ( header_.chip_flags & fds_flag ) != 0;
+	nes_addr_t const addr_begin = fds_ram ? (nes_addr_t) sram_addr : (nes_addr_t) rom_begin;
+	if ( load_addr < addr_begin || init_addr < addr_begin )
 	{
 		const char* w = warning();
 		if ( !w )
@@ -363,19 +367,42 @@ blargg_err_t Nsf_Emu::load_( Data_Reader& in )
 	int total_banks = rom.size() / bank_size;
 
 	// bank switching
-	int first_bank = (load_addr - rom_begin) / bank_size;
-	for ( int i = 0; i < bank_count; i++ )
+	if ( fds_ram )
 	{
-		unsigned bank = i - first_bank;
-		if ( bank >= (unsigned) total_banks )
-			bank = 0;
-		initial_banks [i] = bank;
-
-		if ( header_.banks [i] )
+		// initial banks are contiguous from load_addr; a non-zero header bank list overrides them,
+		// with banks[6]/banks[7] mapping the 0x6000-0x7FFF window.
+		int first_bank = (load_addr - sram_addr) / bank_size;
+		for ( int i = 0; i < fds_bank_count; i++ )
 		{
-			// bank-switched
-			memcpy( initial_banks, header_.banks, sizeof initial_banks );
-			break;
+			unsigned bank = i - first_bank;
+			if ( bank >= (unsigned) total_banks )
+				bank = 0;
+			fds_initial_banks [i] = bank;
+		}
+		static byte const zero_banks [sizeof header_.banks] = { 0 };
+		if ( memcmp( header_.banks, zero_banks, sizeof zero_banks ) )
+		{
+			fds_initial_banks [0] = header_.banks [6];
+			fds_initial_banks [1] = header_.banks [7];
+			memcpy( fds_initial_banks + 2, header_.banks, sizeof header_.banks );
+		}
+	}
+	else
+	{
+		int first_bank = (load_addr - rom_begin) / bank_size;
+		for ( int i = 0; i < bank_count; i++ )
+		{
+			unsigned bank = i - first_bank;
+			if ( bank >= (unsigned) total_banks )
+				bank = 0;
+			initial_banks [i] = bank;
+
+			if ( header_.banks [i] )
+			{
+				// bank-switched
+				memcpy( initial_banks, header_.banks, sizeof initial_banks );
+				break;
+			}
 		}
 	}
 
@@ -575,8 +602,20 @@ blargg_err_t Nsf_Emu::start_track_( int track )
 
 	cpu::reset( unmapped_code ); // also maps low_mem
 	cpu::map_code( sram_addr, sizeof sram, sram );
-	for ( int i = 0; i < bank_count; ++i )
-		cpu_write( bank_select_addr + i, initial_banks [i] );
+	if ( fds_ram )
+	{
+		// map 0x8000-0xDFFF as RAM and (re)copy the initial banks into it.
+		// (every track starts from the file's pristine data even after the previous track modified RAM)
+		memset( fdsram, 0, sizeof fdsram );
+		cpu::map_code( fdsram_addr, sizeof fdsram, fdsram );
+		for ( int i = 0; i < fds_bank_count; ++i )
+			cpu_write( fds_bank_select_addr + i, fds_initial_banks [i] );
+	}
+	else
+	{
+		for ( int i = 0; i < bank_count; ++i )
+			cpu_write( bank_select_addr + i, initial_banks [i] );
+	}
 
 	apu.reset( pal_only, (header_.speed_flags & 0x20) ? 0x3F : 0 );
 	apu.write_register( 0, 0x4015, 0x0F );

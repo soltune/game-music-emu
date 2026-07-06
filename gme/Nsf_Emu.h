@@ -80,6 +80,13 @@ protected:
 	enum { bank_select_addr = 0x5FF8 };
 	enum { bank_size = 0x1000 };
 	Rom_Data<bank_size> rom;
+	enum { fds_bank_select_addr = 0x5FF6 };
+	enum { fds_bank_count = 10 };
+	enum { fdsram_addr = 0x8000 };
+	enum { fdsram_size = 0x6000 };
+	bool fds_ram; // FDS RAM active (header chip_flags & 0x04)
+	byte fds_initial_banks [fds_bank_count];
+	byte fdsram [fdsram_size];
 
 public: private: friend class Nes_Cpu;
 	void cpu_jsr( nes_addr_t );
