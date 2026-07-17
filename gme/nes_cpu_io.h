@@ -84,7 +84,7 @@ void Nsf_Emu::cpu_write( nes_addr_t addr, int data )
 	if ( fds_ram )
 	{
 		unsigned ram_offset = addr - fdsram_addr;
-		if ( ram_offset < fdsram_size )
+		if ( fds_writable && ram_offset < fdsram_size )
 		{
 			fdsram [ram_offset] = data;
 			return;

@@ -85,6 +85,7 @@ protected:
 	enum { fdsram_addr = 0x8000 };
 	enum { fdsram_size = 0x6000 };
 	bool fds_ram; // FDS RAM active (header chip_flags & 0x04)
+	bool fds_writable; // 0x8000-0xDFFF writable (FDS is the sole expansion chip)
 	byte fds_initial_banks [fds_bank_count];
 	byte fdsram [fdsram_size];
 

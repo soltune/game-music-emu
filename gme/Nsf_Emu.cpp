@@ -61,6 +61,7 @@ Nsf_Emu::Nsf_Emu()
 	vrc7  = 0;
 
 	fds_ram = false;
+	fds_writable = false;
 
 	set_type( gme_nsf_type );
 	set_silence_lookahead( 6 );
@@ -353,9 +354,11 @@ blargg_err_t Nsf_Emu::load_( Data_Reader& in )
 	if ( !load_addr ) load_addr = rom_begin;
 	if ( !init_addr ) init_addr = rom_begin;
 	if ( !play_addr ) play_addr = rom_begin;
-	// Only rips that actually load into RAM below rom_begin need RAM mode; the FDS
-	// chip flag alone also covers ordinary ROM-based NSFs that merely use FDS audio.
-	fds_ram = ( ( header_.chip_flags & fds_flag ) != 0 ) && ( load_addr < rom_begin );
+	fds_ram = ( header_.chip_flags & fds_flag ) != 0;
+	// 0x8000-0xDFFF is writable RAM only when FDS is the sole expansion chip (a disk
+	// rip). NSFs that pair FDS with other chips (homebrew) expect ROM semantics there,
+	// and their expansion registers in that range must reach cpu_write_misc.
+	fds_writable = header_.chip_flags == fds_flag;
 	nes_addr_t const addr_begin = fds_ram ? (nes_addr_t) sram_addr : (nes_addr_t) rom_begin;
 	if ( load_addr < addr_begin || init_addr < addr_begin )
 	{
