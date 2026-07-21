@@ -170,9 +170,14 @@ void Gb_Square::run( blip_time_t time, blip_time_t end_time, int playing )
 
 void Gb_Noise::run( blip_time_t time, blip_time_t end_time, int playing )
 {
+	// 'bits' holds the actual hardware LFSR state (15 bits, XOR feedback of
+	// the low two bits shifted into bit 14, and also bit 6 in 7-bit mode;
+	// output is bit 0). The previous toggle-history formulation locked up
+	// silent when a game triggered the channel while NR43 still held a
+	// 15-bit-mode value and switched to 7-bit mode a few clocks later
+	// (e.g. Konami drum drivers).
 	int amp = volume & playing;
-	int tap = 13 - (regs [3] & 8);
-	if ( bits >> tap & 2 )
+	if ( bits & 1 )
 		amp = -amp;
 
 	{
@@ -192,6 +197,7 @@ void Gb_Noise::run( blip_time_t time, blip_time_t end_time, int playing )
 	{
 		static unsigned char const table [8] = { 8, 16, 32, 48, 64, 80, 96, 112 };
 		int period = table [regs [3] & 7] << (regs [3] >> 4);
+		unsigned const mode7 = regs [3] & 8;
 
 		// keep parallel resampled time to eliminate time conversion in the loop
 		Blip_Buffer* const output = this->output;
@@ -203,13 +209,17 @@ void Gb_Noise::run( blip_time_t time, blip_time_t end_time, int playing )
 
 		do
 		{
-			unsigned changed = (bits >> tap) + 1;
+			// new bit 0 comes from bit 1, so the output toggles exactly
+			// when the feedback (bit 0 XOR bit 1) is set
+			unsigned feedback = (bits ^ (bits >> 1)) & 1;
 			time += period;
-			bits <<= 1;
-			if ( changed & 2 )
+			bits >>= 1;
+			bits |= feedback << 14;
+			if ( mode7 )
+				bits = (bits & ~0x40u) | (feedback << 6);
+			if ( feedback )
 			{
 				delta = -delta;
-				bits |= 1;
 				synth->offset_resampled( resampled_time, delta, output );
 			}
 			resampled_time += resampled_period;
