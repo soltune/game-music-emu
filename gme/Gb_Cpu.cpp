@@ -454,8 +454,17 @@ loop:
 
 	case 0x07: // RLCA
 	case 0x17: // RLA
+		// RLCA/RLA always clear Z on the game boy CPU, unlike the CB-prefixed
+		// rotates, so they can't share shift_comm
 		data = op;
-		op = rg.a;
+		op = rg.a << 1;
+		op |= ((data & flags) >> 4) & 1; // RLA shifts carry in
+		flags = (op >> 4) & c_flag;
+		if ( data < 0x10 ) // RLCA wraps bit 7 around
+			op |= op >> 8;
+		rg.a = op & 0xFF;
+		goto loop;
+
 	rl_comm:
 		op <<= 1;
 		op |= ((data & flags) >> 4) & 1; // RL and carry is set
@@ -467,8 +476,16 @@ loop:
 
 	case 0x0F: // RRCA
 	case 0x1F: // RRA
+		// RRCA/RRA always clear Z on the game boy CPU
 		data = op;
 		op = rg.a;
+		op |= (data & flags) << 4; // RRA shifts carry in
+		flags = (op << 4) & c_flag;
+		if ( data < 0x10 ) // RRCA wraps bit 0 around
+			op |= op << 8;
+		rg.a = (op >> 1) & 0xFF;
+		goto loop;
+
 	rr_comm:
 		op |= (data & flags) << 4; // RR and carry is set
 		flags = (op << 4) & c_flag; // C = bit shifted out
