@@ -56,6 +56,13 @@ private:
 	int mod_fract;
 	int mod_pos;
 	int mod_write_pos;
+
+	// output lowpass (the FDS's RC filter, ~2 kHz; NSFPlay and the trackers apply it too)
+	blip_time_t lp_time;
+	int lp_out;   // filtered amplitude, 16.16 fixed point
+	int lp_emit;  // last value sent to the synth
+	int lp_alpha; // per lp_step, 16.16
+	void run_lowpass( blip_time_t );
 	unsigned char mod_wave [wave_size];
 
 	// synthesis
@@ -71,9 +78,10 @@ private:
 
 inline void Nes_Fds_Apu::volume( double v )
 {
-	// 0.35 (was 0.14): level-matched against Nintendo's official FDS recordings,
-	// which have the FDS channel ~2.5x louder relative to the APU than 0.14 gave
-	synth.volume( 0.35 / master_vol_max / vol_max / wave_sample_max * v );
+	// 0.40 (was 0.14, then 0.35): level-matched by ear against real hardware
+	// (several Famicom models), which has the FDS channel much louder relative
+	// to the APU than 0.14 gave
+	synth.volume( 0.40 /master_vol_max / vol_max / wave_sample_max * v );
 }
 
 inline void Nes_Fds_Apu::osc_output( int i, Blip_Buffer* buf )
@@ -89,7 +97,9 @@ inline void Nes_Fds_Apu::end_frame( blip_time_t end_time )
 {
 	if ( end_time > last_time )
 		run_until( end_time );
+	run_lowpass( end_time );
 	last_time -= end_time;
+	lp_time   -= end_time;
 	assert( last_time >= 0 );
 }
 

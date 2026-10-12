@@ -16,8 +16,10 @@ Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA */
 #include "blargg_source.h"
 
 #include <string.h>
+#include <math.h>
 
 static int const fract_range = 65536;
+static int const lp_step = 16; // CPU clocks per lowpass update (~112 kHz)
 
 void Nes_Fds_Apu::reset()
 {
@@ -33,6 +35,10 @@ void Nes_Fds_Apu::reset()
 	mod_fract     = fract_range;
 	mod_pos       = 0;
 	mod_write_pos = 0;
+	lp_time       = 0;
+	lp_out        = 0;
+	lp_emit       = 0;
+	lp_alpha      = (int) ((1.0 - exp( -2.0 * 3.14159265358979 * 2000.0 * lp_step / 1789773.0 )) * 65536 + 0.5);
 
 	static byte const initial_regs [0x0B] = {
 		0x80,       // disable envelope
@@ -79,19 +85,22 @@ void Nes_Fds_Apu::write_( unsigned addr, int data )
 				break;
 
 			case 0x4085:
-				mod_pos = mod_write_pos;
 				regs (0x4085) = data & 0x7F;
+				break;
+
+			case 0x4087:
+				if ( data & 0x80 )
+					mod_fract = fract_range; // halting resets the mod accumulator
 				break;
 
 			case 0x4088:
 				if ( regs (0x4087) & 0x80 )
 				{
-					int pos = mod_write_pos;
+					int pos = mod_pos;
 					data &= 0x07;
-					mod_wave [pos    ] = data;
-					mod_wave [pos + 1] = data;
-					mod_write_pos = (pos     + 2) & (wave_size - 1);
-					mod_pos       = (mod_pos + 2) & (wave_size - 1);
+					mod_wave [pos] = data;
+					mod_wave [(pos + 1) & (wave_size - 1)] = data;
+					mod_pos = (pos + 2) & (wave_size - 1);
 				}
 				break;
 			}
@@ -211,15 +220,16 @@ void Nes_Fds_Apu::run_until( blip_time_t final_end_time )
 				int factor = sweep_bias * sweep_gain;
 				int extra = factor & 0x0F;
 				factor >>= 4;
-				if ( extra )
-				{
-					factor--;
-					if ( sweep_bias >= 0 )
-						factor += 3;
-				}
-				if ( factor > 193 ) factor -= 258;
-				if ( factor < -64 ) factor += 256;
-				freq += (freq * factor) >> 6;
+				if ( extra && !(factor & 0x80) )
+					factor += (sweep_bias < 0) ? -1 : 2;
+				if ( factor >= 192 ) factor -= 256;
+				else if ( factor < -64 ) factor += 256;
+				int delta = freq * factor;
+				int rem = delta & 0x3F;
+				delta >>= 6;
+				if ( rem >= 32 )
+					delta++;
+				freq += delta;
 				if ( freq <= 0 )
 					continue;
 			}
@@ -251,8 +261,8 @@ void Nes_Fds_Apu::run_until( blip_time_t final_end_time )
 					int delta = amp - last_amp;
 					if ( delta )
 					{
+						run_lowpass( time );
 						last_amp = amp;
-						synth.offset_inline( time, delta, output_ );
 					}
 
 					wave_fract += fract_range - delay * freq;
@@ -279,4 +289,26 @@ void Nes_Fds_Apu::run_until( blip_time_t final_end_time )
 		sweep_delay = sweep_time - final_end_time; check( sweep_delay >= 0 );
 	}
 	last_time = final_end_time;
+}
+
+void Nes_Fds_Apu::run_lowpass( blip_time_t end_time )
+{
+	// one-pole lowpass on last_amp, stepped every lp_step clocks
+	if ( !output_ )
+	{
+		lp_time = end_time;
+		return;
+	}
+	int const in = last_amp << 16;
+	while ( lp_time < end_time )
+	{
+		lp_out += (int) (((long long) (in - lp_out) * lp_alpha) >> 16);
+		int const v = (lp_out + 0x8000) >> 16;
+		if ( v != lp_emit )
+		{
+			synth.offset( lp_time, v - lp_emit, output_ );
+			lp_emit = v;
+		}
+		lp_time += lp_step;
+	}
 }
