@@ -78,10 +78,10 @@ private:
 
 inline void Nes_Fds_Apu::volume( double v )
 {
-	// 0.40 (was 0.14, then 0.35): level-matched by ear against real hardware
+	// 0.50 (was 0.14): level-matched by ear against real hardware
 	// (several Famicom models), which has the FDS channel much louder relative
 	// to the APU than 0.14 gave
-	synth.volume( 0.40 /master_vol_max / vol_max / wave_sample_max * v );
+	synth.volume( 0.50 /master_vol_max / vol_max / wave_sample_max * v );
 }
 
 inline void Nes_Fds_Apu::osc_output( int i, Blip_Buffer* buf )
