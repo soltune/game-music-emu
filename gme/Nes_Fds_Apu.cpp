@@ -85,22 +85,19 @@ void Nes_Fds_Apu::write_( unsigned addr, int data )
 				break;
 
 			case 0x4085:
+				mod_pos = mod_write_pos;
 				regs (0x4085) = data & 0x7F;
-				break;
-
-			case 0x4087:
-				if ( data & 0x80 )
-					mod_fract = fract_range; // halting resets the mod accumulator
 				break;
 
 			case 0x4088:
 				if ( regs (0x4087) & 0x80 )
 				{
-					int pos = mod_pos;
+					int pos = mod_write_pos;
 					data &= 0x07;
-					mod_wave [pos] = data;
-					mod_wave [(pos + 1) & (wave_size - 1)] = data;
-					mod_pos = (pos + 2) & (wave_size - 1);
+					mod_wave [pos    ] = data;
+					mod_wave [pos + 1] = data;
+					mod_write_pos = (pos     + 2) & (wave_size - 1);
+					mod_pos       = (mod_pos + 2) & (wave_size - 1);
 				}
 				break;
 			}
@@ -220,16 +217,15 @@ void Nes_Fds_Apu::run_until( blip_time_t final_end_time )
 				int factor = sweep_bias * sweep_gain;
 				int extra = factor & 0x0F;
 				factor >>= 4;
-				if ( extra && !(factor & 0x80) )
-					factor += (sweep_bias < 0) ? -1 : 2;
-				if ( factor >= 192 ) factor -= 256;
-				else if ( factor < -64 ) factor += 256;
-				int delta = freq * factor;
-				int rem = delta & 0x3F;
-				delta >>= 6;
-				if ( rem >= 32 )
-					delta++;
-				freq += delta;
+				if ( extra )
+				{
+					factor--;
+					if ( sweep_bias >= 0 )
+						factor += 3;
+				}
+				if ( factor > 193 ) factor -= 258;
+				if ( factor < -64 ) factor += 256;
+				freq += (freq * factor) >> 6;
 				if ( freq <= 0 )
 					continue;
 			}
