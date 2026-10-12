@@ -19,6 +19,7 @@ Nes_Namco_Apu::Nes_Namco_Apu()
 {
 	output( NULL );
 	volume( 1.0 );
+	legacy_length = false;
 	reset();
 }
 
@@ -101,8 +102,23 @@ void Nes_Namco_Apu::run_until( blip_time_t nes_end_time )
 			blip_resampled_time_t period =
 					output->resampled_duration( 983040 ) / freq * active_oscs;
 
-			// length field is 6 bits: 256 - (reg & 0xFC) samples (4..256)
-			int wave_size = 256 - (osc_reg [4] & 0xFC);
+			// length field is 6 bits: 256 - (reg & 0xFC) samples (4..256), as on hardware.
+			// Older emulators instead took only bits 2-4 as the length (32 - n * 4
+			// samples) and muted the channel when bits 5-7 were zero. NSFs written
+			// against that behavior store short waves close together, so with the
+			// 6-bit length their waves become far longer, run over other waves and into
+			// the channel registers, and play as noise. Those keep the old reading.
+			int wave_size;
+			if ( legacy_length )
+			{
+				if ( !(osc_reg [4] & 0xE0) )
+					continue;
+				wave_size = 32 - (osc_reg [4] >> 2 & 7) * 4;
+			}
+			else
+			{
+				wave_size = 256 - (osc_reg [4] & 0xFC);
+			}
 
 			int last_amp = osc.last_amp;
 			int wave_pos = osc.wave_pos;

@@ -29,6 +29,10 @@ public:
 	static const unsigned int addr_reg_addr = 0xF800;
 	void write_addr( int );
 
+	// Read the wave length register the way older emulators did, for NSFs written
+	// against that behavior (see run_until). Kept across reset().
+	void legacy_wave_length( bool b ) { legacy_length = b; }
+
 	// to do: implement save/restore
 	void save_state( namco_state_t* out ) const;
 	void load_state( namco_state_t const& );
@@ -52,6 +56,7 @@ private:
 
 	blip_time_t last_time;
 	int addr_reg;
+	bool legacy_length;
 
 	static const int reg_count = 0x80;
 	uint8_t reg [reg_count];

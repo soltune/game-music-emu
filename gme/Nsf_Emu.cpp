@@ -354,6 +354,11 @@ blargg_err_t Nsf_Emu::load_( Data_Reader& in )
 	if ( !load_addr ) load_addr = rom_begin;
 	if ( !init_addr ) init_addr = rom_begin;
 	if ( !play_addr ) play_addr = rom_begin;
+	// NSFs built with the MCK / PPMCK MML driver (init $8080, play $8084) set the
+	// N163 wave length in the older emulator format rather than the hardware one;
+	// trackers such as FamiTracker and FamiStudio use the hardware format.
+	if ( namco )
+		namco->legacy_wave_length( init_addr == 0x8080 && play_addr == 0x8084 );
 	fds_ram = ( header_.chip_flags & fds_flag ) != 0;
 	// 0x8000-0xDFFF is writable RAM only when FDS is the sole expansion chip (a disk
 	// rip). NSFs that pair FDS with other chips (homebrew) expect ROM semantics there,
