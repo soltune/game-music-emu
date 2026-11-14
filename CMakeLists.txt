@@ -39,6 +39,11 @@ option(USE_GME_SPC "Enable SNES SPC music emulation" ON)
 option(USE_GME_VGM "Enable Sega VGM/VGZ music emulation" ON)
 
 option(GME_SPC_ISOLATED_ECHO_BUFFER "Enable isolated echo buffer on SPC emulator to allow correct playing of \"dodgy\" SPC files made for various ROM hacks ran on ZSNES" OFF)
+option(GME_NAMCO_DIGITAL_MIXER "Enable digital mixer in Namco N163 (N106) emulator to eliminate high-pitched channel-multiplexing noise" ON)
+option(GME_NAMCO_SYNC_UPDATE "Synchronize Namco N163 (N106) channel updates (requires GME_NAMCO_DIGITAL_MIXER) to mitigate serial aliasing" ON)
+set(GME_NAMCO_SYNC_MODE "BLIP" CACHE STRING "Namco N163 synchronized update algorithm when GME_NAMCO_SYNC_UPDATE is ON: \"BLIP\" or \"TICK\"")
+set(GME_NAMCO_SYNC_MODE_CHOICES "BLIP;TICK")
+set_property(CACHE GME_NAMCO_SYNC_MODE PROPERTY STRINGS "${GME_NAMCO_SYNC_MODE_CHOICES}")
 option(GME_ZLIB "Enable GME to support compressed sound formats" ON)
 
 set(GME_YM2612_EMU "Nuked" CACHE STRING "Which YM2612 emulator to use: \"Nuked\" (LGPLv2.1+), \"MAME\" (GPLv2+), or \"GENS\" (LGPLv2.1+)")

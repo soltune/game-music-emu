@@ -7,6 +7,16 @@
 #include "blargg_common.h"
 #include "Blip_Buffer.h"
 
+#ifndef NAMCO_DIGITAL_MIXER
+	#define NAMCO_DIGITAL_MIXER 1
+#endif
+#ifndef NAMCO_SYNC_UPDATE
+	#define NAMCO_SYNC_UPDATE 1
+#endif
+#ifndef NAMCO_SYNC_MODE_TICK
+	#define NAMCO_SYNC_MODE_TICK 0
+#endif
+
 struct namco_state_t;
 
 class Nes_Namco_Apu {
@@ -46,12 +56,19 @@ private:
 		Blip_Buffer* output;
 		short last_amp;
 		short wave_pos;
+		uint32_t phase;
+		uint32_t sub_accum;
+		blip_resampled_time_t last_period;
 	};
 
 	Namco_Osc oscs [osc_count];
 
 	blip_time_t last_time;
 	int addr_reg;
+	int active_delay;
+	int current_osc;
+	short dac_amp;
+	Blip_Buffer* dac_last_buf;
 
 	static const int reg_count = 0x80;
 	uint8_t reg [reg_count];
@@ -59,6 +76,9 @@ private:
 
 	uint8_t& access();
 	void run_until( blip_time_t );
+	void silence_osc( Namco_Osc&, blip_resampled_time_t );
+	void silence_cpu_osc( Namco_Osc&, blip_time_t );
+	int read_wave_sample( int osc_idx, int wave_pos ) const;
 };
 /*
 struct namco_state_t
