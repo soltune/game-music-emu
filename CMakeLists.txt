@@ -48,6 +48,7 @@ option(GME_NAMCO_DEZIPPER_WAVE "De-zipper discontinuous Namco N163 wave RAM upda
 set(GME_NAMCO_DEZIPPER_MODE "COALESCE" CACHE STRING "Namco N163 wave de-zippering algorithm when GME_NAMCO_DEZIPPER_WAVE is ON: \"COALESCE\" (burst coalesce) or \"LATCH\" (coalesce + cycle latch)")
 set(GME_NAMCO_DEZIPPER_MODE_CHOICES "COALESCE;LATCH")
 set_property(CACHE GME_NAMCO_DEZIPPER_MODE PROPERTY STRINGS "${GME_NAMCO_DEZIPPER_MODE_CHOICES}")
+set(GME_NAMCO_VOLUME_SCALE "0.55" CACHE STRING "Namco N163 (N106) output volume multiplier relative to Blargg default (1.0)")
 option(GME_ZLIB "Enable GME to support compressed sound formats" ON)
 
 set(GME_YM2612_EMU "Nuked" CACHE STRING "Which YM2612 emulator to use: \"Nuked\" (LGPLv2.1+), \"MAME\" (GPLv2+), or \"GENS\" (LGPLv2.1+)")

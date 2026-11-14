@@ -22,6 +22,9 @@
 #ifndef NAMCO_DEZIPPER_CYCLE_LATCH
 	#define NAMCO_DEZIPPER_CYCLE_LATCH 0
 #endif
+#ifndef NAMCO_VOLUME_SCALE
+	#define NAMCO_VOLUME_SCALE 0.55
+#endif
 
 struct namco_state_t;
 
@@ -118,7 +121,7 @@ inline uint8_t& Nes_Namco_Apu::access()
 	return reg [addr];
 }
 
-inline void Nes_Namco_Apu::volume( double v ) { synth.volume( 0.10 / osc_count * v ); }
+inline void Nes_Namco_Apu::volume( double v ) { synth.volume( (0.10 * NAMCO_VOLUME_SCALE) / osc_count * v ); }
 
 inline void Nes_Namco_Apu::treble_eq( const blip_eq_t& eq ) { synth.treble_eq( eq ); }
 
