@@ -44,6 +44,10 @@ option(GME_NAMCO_SYNC_UPDATE "Synchronize Namco N163 (N106) channel updates (req
 set(GME_NAMCO_SYNC_MODE "BLIP" CACHE STRING "Namco N163 synchronized update algorithm when GME_NAMCO_SYNC_UPDATE is ON: \"BLIP\" or \"TICK\"")
 set(GME_NAMCO_SYNC_MODE_CHOICES "BLIP;TICK")
 set_property(CACHE GME_NAMCO_SYNC_MODE PROPERTY STRINGS "${GME_NAMCO_SYNC_MODE_CHOICES}")
+option(GME_NAMCO_DEZIPPER_WAVE "De-zipper discontinuous Namco N163 wave RAM updates" ON)
+set(GME_NAMCO_DEZIPPER_MODE "COALESCE" CACHE STRING "Namco N163 wave de-zippering algorithm when GME_NAMCO_DEZIPPER_WAVE is ON: \"COALESCE\" (burst coalesce) or \"LATCH\" (coalesce + cycle latch)")
+set(GME_NAMCO_DEZIPPER_MODE_CHOICES "COALESCE;LATCH")
+set_property(CACHE GME_NAMCO_DEZIPPER_MODE PROPERTY STRINGS "${GME_NAMCO_DEZIPPER_MODE_CHOICES}")
 option(GME_ZLIB "Enable GME to support compressed sound formats" ON)
 
 set(GME_YM2612_EMU "Nuked" CACHE STRING "Which YM2612 emulator to use: \"Nuked\" (LGPLv2.1+), \"MAME\" (GPLv2+), or \"GENS\" (LGPLv2.1+)")

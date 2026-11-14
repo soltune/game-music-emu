@@ -14,6 +14,7 @@ License along with this module; if not, write to the Free Software Foundation,
 Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA */
 
 #include "blargg_source.h"
+#include <string.h>
 
 Nes_Namco_Apu::Nes_Namco_Apu()
 {
@@ -35,6 +36,13 @@ void Nes_Namco_Apu::reset()
 	for ( i = 0; i < reg_count; i++ )
 		reg [i] = 0;
 
+#if NAMCO_DEZIPPER_WAVE
+	memset( staged_wave, 0, sizeof(staged_wave) );
+	wave_dirty = false;
+	wave_burst_clocks = 0;
+	wave_idle_clocks = 0;
+#endif
+
 	for ( i = 0; i < osc_count; i++ )
 	{
 		Namco_Osc& osc = oscs [i];
@@ -44,6 +52,10 @@ void Nes_Namco_Apu::reset()
 		osc.phase = 0;
 		osc.sub_accum = 0;
 		osc.last_period = 0;
+#if NAMCO_DEZIPPER_WAVE && NAMCO_DEZIPPER_CYCLE_LATCH
+		memset( osc.wave_snap, 0, sizeof(osc.wave_snap) );
+		osc.wave_pending = false;
+#endif
 	}
 }
 
@@ -91,11 +103,46 @@ static inline int advance_osc_phase( uint32_t& phase, int wave_size, uint32_t st
 }
 #endif
 
+void Nes_Namco_Apu::latch_osc_wave( int osc_idx )
+{
+#if NAMCO_DEZIPPER_WAVE && NAMCO_DEZIPPER_CYCLE_LATCH
+	Namco_Osc& osc = oscs [osc_idx];
+	if ( osc.wave_pending )
+	{
+		memcpy( osc.wave_snap, reg, sizeof(osc.wave_snap) );
+		osc.wave_pending = false;
+	}
+#else
+	(void)osc_idx;
+#endif
+}
+
+void Nes_Namco_Apu::commit_staged_wave()
+{
+#if NAMCO_DEZIPPER_WAVE
+	if ( !wave_dirty )
+		return;
+	memcpy( reg, staged_wave, sizeof(staged_wave) );
+	wave_dirty = false;
+	wave_burst_clocks = 0;
+	wave_idle_clocks = 0;
+	#if NAMCO_DEZIPPER_CYCLE_LATCH
+	for ( int i = 0; i < osc_count; i++ )
+		oscs [i].wave_pending = true;
+	#endif
+#endif
+}
+
 int Nes_Namco_Apu::read_wave_sample( int osc_idx, int wave_pos ) const
 {
 	const uint8_t* osc_reg = &reg [osc_idx * 8 + 0x40];
 	int addr = (wave_pos + osc_reg [6]) & 0xFF;
+#if NAMCO_DEZIPPER_WAVE && NAMCO_DEZIPPER_CYCLE_LATCH
+	const uint8_t* wsrc = (addr < 0x80) ? oscs [osc_idx].wave_snap : reg;
+	int sample = (wsrc [addr >> 1] >> ((addr & 1) << 2)) & 15;
+#else
 	int sample = (reg [addr >> 1] >> ((addr & 1) << 2)) & 15;
+#endif
 	return sample * (osc_reg [7] & 15);
 }
 
@@ -130,12 +177,47 @@ void Nes_Namco_Apu::run_until( blip_time_t nes_end_time )
 	if ( nes_end_time <= last_time )
 		return;
 
+#if NAMCO_DEZIPPER_WAVE
+	if ( wave_dirty )
+	{
+		int dt = nes_end_time - last_time;
+		int rem_idle = 1800 - wave_idle_clocks;
+		int rem_max = 4500 - wave_burst_clocks;
+		int rem = (rem_idle < rem_max) ? rem_idle : rem_max;
+		if ( rem <= 0 )
+		{
+			commit_staged_wave();
+		}
+		else if ( rem < dt )
+		{
+			render_span( last_time + rem );
+			commit_staged_wave();
+		}
+		else
+		{
+			wave_idle_clocks += dt;
+			wave_burst_clocks += dt;
+		}
+	}
+#endif
+
+	render_span( nes_end_time );
+}
+
+void Nes_Namco_Apu::render_span( blip_time_t nes_end_time )
+{
+	if ( nes_end_time <= last_time )
+		return;
+
 	int active_oscs = (reg [0x7F] >> 4 & 7) + 1;
 	int first_active = osc_count - active_oscs;
 
 #if !NAMCO_DIGITAL_MIXER || !NAMCO_SYNC_UPDATE || NAMCO_SYNC_MODE_TICK
 	for ( int i = 0; i < first_active; i++ )
+	{
 		silence_cpu_osc( oscs [i], last_time );
+		latch_osc_wave( i );
+	}
 
 	blip_time_t t = last_time + active_delay;
 
@@ -174,7 +256,11 @@ void Nes_Namco_Apu::run_until( blip_time_t nes_end_time )
 				| ((uint32_t)osc_reg [2] << 8)
 				| osc_reg [0];
 
-		osc.wave_pos = (short)advance_osc_phase( osc.phase, wave_size, freq );
+		int prev_pos = osc.wave_pos;
+		int next_pos = advance_osc_phase( osc.phase, wave_size, freq );
+		osc.wave_pos = (short)next_pos;
+		if ( next_pos < prev_pos || !(osc_reg [7] & 15) )
+			latch_osc_wave( current_osc );
 
 		int sample = osc.output ? read_wave_sample( current_osc, osc.wave_pos ) : 0;
 
@@ -229,7 +315,11 @@ void Nes_Namco_Apu::run_until( blip_time_t nes_end_time )
 				| ((uint32_t)osc_reg [2] << 8)
 				| osc_reg [0];
 
-		osc.wave_pos = (short)advance_osc_phase( osc.phase, wave_size, freq );
+		int prev_pos = osc.wave_pos;
+		int next_pos = advance_osc_phase( osc.phase, wave_size, freq );
+		osc.wave_pos = (short)next_pos;
+		if ( next_pos < prev_pos || osc.last_amp == 0 || !(osc_reg [7] & 15) )
+			latch_osc_wave( current_osc );
 
 		if ( osc.output )
 		{
@@ -264,7 +354,11 @@ void Nes_Namco_Apu::run_until( blip_time_t nes_end_time )
 			uint32_t step = osc.sub_accum / (uint32_t)active_oscs;
 			osc.sub_accum %= (uint32_t)active_oscs;
 
-			osc.wave_pos = (short)advance_osc_phase( osc.phase, wave_size, step );
+			int prev_pos = osc.wave_pos;
+			int next_pos = advance_osc_phase( osc.phase, wave_size, step );
+			osc.wave_pos = (short)next_pos;
+			if ( next_pos < prev_pos || osc.last_amp == 0 || !(osc_reg [7] & 15) )
+				latch_osc_wave( i );
 
 			if ( osc.output )
 			{
@@ -293,6 +387,7 @@ void Nes_Namco_Apu::run_until( blip_time_t nes_end_time )
 			silence_osc( osc, osc.output->resampled_time( last_time ) );
 		osc.delay = 0;
 		osc.last_period = 0;
+		latch_osc_wave( i );
 	}
 
 	for ( int i = first_active; i < osc_count; i++ )
@@ -300,7 +395,10 @@ void Nes_Namco_Apu::run_until( blip_time_t nes_end_time )
 		Namco_Osc& osc = oscs [i];
 		Blip_Buffer* output = osc.output;
 		if ( !output )
+		{
+			latch_osc_wave( i );
 			continue;
+		}
 		output->set_modified();
 
 		blip_resampled_time_t start_time = output->resampled_time( last_time );
@@ -317,6 +415,7 @@ void Nes_Namco_Apu::run_until( blip_time_t nes_end_time )
 			silence_osc( osc, start_time );
 			osc.delay = 0;
 			osc.last_period = 0;
+			latch_osc_wave( i );
 			continue;
 		}
 
@@ -342,6 +441,9 @@ void Nes_Namco_Apu::run_until( blip_time_t nes_end_time )
 
 			do
 			{
+				if ( wave_pos == 0 || last_amp == 0 )
+					latch_osc_wave( i );
+
 				int sample = read_wave_sample( i, wave_pos );
 				wave_pos++;
 				if ( wave_pos >= wave_size )
